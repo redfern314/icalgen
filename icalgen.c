@@ -8,8 +8,7 @@
 
 void printIntro(){
     puts("iCal Generator for Linux");
-    puts("Written by Derek Redfern\n");
-    puts("Note: DST may or may not work correctly! Has not been been tested yet.\n\n");
+    puts("Written by Derek Redfern\n\n");
 }
 
 FILE *openFile(){
@@ -19,7 +18,7 @@ FILE *openFile(){
     char *fname = (char*)malloc(50*sizeof(char));
     int length;
     while(contLoop){
-        puts("Name of iCal file to create (extension will be appended automatically):");
+        puts("Path and name of iCal file to create (without extension):");
         fgets(input,51,stdin);
         length = strlen(input);
         strncpy(fname,input,length-1); //get rid of \n in input
@@ -224,28 +223,31 @@ DESCRIPTION:%sSUMMARY;LANGUAGE=en-us:%sLOCATION:%s",description,title,location);
             int i;
             for (i=0;i<strlen(weekday);i++){
                 if(weekday[i]=='0'&&!weekdaybool[0]){
-                    strcat(weekdaynames,"SU");
+                    strcat(weekdaynames,"SU,");
                     weekdaybool[0]=1;
                 } else if(weekday[i]=='1'&&!weekdaybool[1]){
-                    strcat(weekdaynames,"MO");
+                    strcat(weekdaynames,"MO,");
                     weekdaybool[1]=1;
                 } else if(weekday[i]=='2'&&!weekdaybool[2]){
-                    strcat(weekdaynames,"TU");
+                    strcat(weekdaynames,"TU,");
                     weekdaybool[2]=1;
                 } else if(weekday[i]=='3'&&!weekdaybool[3]){
-                    strcat(weekdaynames,"WE");
+                    strcat(weekdaynames,"WE,");
                     weekdaybool[3]=1;
                 } else if(weekday[i]=='4'&&!weekdaybool[4]){
-                    strcat(weekdaynames,"TH");
+                    strcat(weekdaynames,"TH,");
                     weekdaybool[4]=1;
                 } else if(weekday[i]=='5'&&!weekdaybool[5]){
-                    strcat(weekdaynames,"FR");
+                    strcat(weekdaynames,"FR,");
                     weekdaybool[5]=1;
                 } else if(weekday[i]=='6'&&!weekdaybool[6]){
-                    strcat(weekdaynames,"SA");
+                    strcat(weekdaynames,"SA,");
                     weekdaybool[6]=1;
                 }
             }
+            weekdaynames[strlen(weekdaynames)-1]=';';
+            weekdaynames[strlen(weekdaynames)]='\0';
+            fprintf(file,"BYDAY=%sWKST=SU;",weekdaynames);
         } else if (confirm=='m') {
             freqstr="month";
             fprintf(file, "RRULE:FREQ=MONTHLY;");
