@@ -1,313 +1,354 @@
-#define _XOPEN_SOURCE
+#include <form.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <ctype.h>
+#include <ncurses.h>
 #include <string.h>
-#include <time.h>
-
-//TODO: implement organizer name and email?
-
-void printIntro(){
-    puts("iCal Generator for Linux");
-    puts("Written by Derek Redfern\n\n");
-}
+#include "funcs.h"
 
 FILE *openFile(){
+    FIELD *field[3];
+    FORM  *my_form;
+    int ch;
+
     int contLoop = 1;
     FILE *file;
-    char input[51];
-    char *fname = (char*)malloc(50*sizeof(char));
-    int length;
+    char *fname = (char*)malloc(50*sizeof(char));;
+
     while(contLoop){
-        puts("Path and name of iCal file to create (without extension):");
-        fgets(input,51,stdin);
-        length = strlen(input);
-        strncpy(fname,input,length-1); //get rid of \n in input
+
+        /* Initialize the fields */
+        field[0] = new_field(1, 30, 5, 1, 0, 0); //filename
+        field[1] = new_field(1, 1, 7, 33, 0, 0); //overwrite?
+        field[2] = NULL;
+
+        /* Set field options */
+        set_field_back(field[0], A_UNDERLINE);  /* Print a line for the option  */
+        field_opts_off(field[0], O_AUTOSKIP);   /* Don't go to next field when this */
+                            /* Field is filled up       */
+        //set_field_back(field[1], A_UNDERLINE); 
+        field_opts_off(field[1], O_AUTOSKIP);
+        field_opts_off(field[1], O_VISIBLE);
+
+        /* Create the form and post it */
+        my_form = new_form(field);
+        post_form(my_form);
+        refresh();
+        mvprintw(0,0,"iCal Generator\nWritten by Derek Redfern");
+        mvprintw(4, 1, "Path and name of iCal file to create (without extension):");
+        
+        refresh();
+        form_driver(my_form, REQ_FIRST_FIELD);
+        /* Loop through to get user requests */
+        while((ch = getch()) != '\n')
+        {   switch(ch)
+            {   case KEY_BACKSPACE:
+                    form_driver(my_form, REQ_LEFT_CHAR);
+                    form_driver(my_form, REQ_DEL_CHAR);
+                    break;
+                case KEY_LEFT:
+                    form_driver(my_form, REQ_LEFT_CHAR);
+                    break;
+                case KEY_RIGHT:
+                    form_driver(my_form, REQ_RIGHT_CHAR);
+                    break;
+                default:
+                    /* If this is a normal character, it gets */
+                    /* Printed                */    
+                    form_driver(my_form, ch);
+                    break;
+            }
+        }
+
+        form_driver(my_form,REQ_VALIDATION);
+        char *temp = field_buffer(field[0],0);
+        int length = strlen(temp);
+        strncpy(fname,temp,length);
+        trimTrailingWhitespace(fname);
         strcat(fname,".ics");
         file = fopen(fname,"r");
         if (!(file==NULL)){
-            puts("Overwrite existing file? [y/n]");
-            char confirm='a';
-            char flush;
-            while(!((confirm=='y')||(confirm=='n'))){ //wait for valid input
-                confirm=getchar(); //get first character from stdin
-                while ((flush=getchar()) != '\n' && flush != EOF); //flush stdin
+            mvprintw(7, 1, "Overwrite existing file? [y/n]: ");
+            field_opts_on(field[1], O_VISIBLE);
+            form_driver(my_form, REQ_NEXT_FIELD);
+            field_opts_off(field[0], O_ACTIVE);
+
+            while((ch = getch()) != '\n')
+            {   switch(ch)
+                {   case KEY_BACKSPACE:
+                        form_driver(my_form, REQ_DEL_PREV);
+                        break;
+                    case 'y':   
+                        form_driver(my_form, ch);
+                        break;
+                    case 'n':
+                        form_driver(my_form, ch);
+                        break;
+                }
             }
-            if (confirm=='y'){ //confirm overwrite
+            form_driver(my_form,REQ_VALIDATION);
+            char *confirm = field_buffer(field[1],0);
+            if (confirm[0]=='y'){ //confirm overwrite
                 contLoop=0;
+            } else {
+                fclose(file); //close test file
             }
-            fclose(file); //close test file
         } else {
             contLoop=0; //no file exists, proceed with write
         }
 
+        /* Un post form and free the memory */
+        unpost_form(my_form);
+        free_form(my_form);
+        free_field(field[0]);
+        free_field(field[1]); 
     }
-    printf("Writing to file %s\n",fname);
     file = fopen(fname,"w");
     return file;
 }
 
-void printCurrentTime(FILE *file){
-    time_t timesinceepoch = time(NULL);
-    struct tm *utctime;
-    utctime = gmtime(&timesinceepoch);
-    //printf("%s\n",asctime(utctime)); //asctime deprecated? use strftime?
-    int year = utctime->tm_year+1900;
-    int month = utctime->tm_mon+1;
-    int day = utctime->tm_mday;
-    int hr = utctime->tm_hour;
-    char hrstr[3]="";
-    if (hr<10){
-        sprintf(hrstr,"0%i",hr);
-    } else {
-        sprintf(hrstr,"%i",hr);
+void getSummary(char *title, char *desc, char *loc){
+    FIELD *field[3];
+    FORM  *my_form;
+    int ch;
+    int contLoop=1;
+    char *temp = (char*)malloc(50*sizeof(char));
+
+    /* Initialize the fields */
+    field[0] = new_field(1, 50, 5, 25, 0, 0); //title
+    field[1] = new_field(4, 50, 7, 25, 0, 0); //description
+    field[2] = new_field(1, 30, 12, 25, 0, 0); //location
+
+    /* Set field options */
+    set_field_back(field[0], A_UNDERLINE);
+    field_opts_off(field[0], O_AUTOSKIP); 
+                        
+    set_field_back(field[1], A_UNDERLINE); 
+    field_opts_off(field[1], O_AUTOSKIP);
+
+    set_field_back(field[2], A_UNDERLINE); 
+    field_opts_off(field[2], O_AUTOSKIP);
+
+    /* Create the form and post it */
+    my_form = new_form(field);
+    post_form(my_form);
+    mvprintw(0,0,"iCal Generator\nWritten by Derek Redfern");
+    mvprintw(3,1,"Use arrow keys to navigate; press Enter to proceed\n");
+    mvprintw(5, 1, "Event title (required): ");
+    mvprintw(7, 1, "Event description: ");
+    mvprintw(12, 1, "Event location: ");
+    refresh();
+    //getch();
+    form_driver(my_form, REQ_FIRST_FIELD);
+    /* Loop through to get user requests */
+    while(contLoop)
+    {   ch = getch();
+        switch(ch)
+        {   case KEY_BACKSPACE:
+                form_driver(my_form, REQ_DEL_PREV);
+                break;
+            case KEY_DC:
+                form_driver(my_form, REQ_DEL_CHAR);
+                break;
+            case KEY_LEFT:
+                if (form_driver(my_form, REQ_LEFT_CHAR)==E_REQUEST_DENIED){
+                    form_driver(my_form, REQ_PREV_LINE);
+                }
+                break;
+            case KEY_RIGHT:
+                if (form_driver(my_form, REQ_RIGHT_CHAR)==E_REQUEST_DENIED){
+                    form_driver(my_form, REQ_NEXT_LINE);
+                }
+                break;
+            case KEY_UP:
+                if (form_driver(my_form, REQ_PREV_LINE)==E_REQUEST_DENIED){
+                    form_driver(my_form, REQ_PREV_FIELD);
+                }
+                break;
+            case KEY_DOWN:
+                if (form_driver(my_form, REQ_NEXT_LINE)==E_REQUEST_DENIED){
+                    form_driver(my_form, REQ_NEXT_FIELD);
+                }
+                break;
+            case '\n':
+                form_driver(my_form,REQ_VALIDATION);
+                strcpy(temp,field_buffer(field[0],0));
+                trimTrailingWhitespace(temp);
+                if (strlen(temp)>0) contLoop=0;
+            default:
+                form_driver(my_form, ch);
+                break;
+        }
     }
-    int min = utctime->tm_min;
-    char minstr[3]="";
-    if (min<10){
-        sprintf(minstr,"0%i",min);
-    } else {
-        sprintf(minstr,"%i",min);
-    }
-    int sec = utctime->tm_sec;
-    char secstr[3]="";
-    if (sec<10){
-        sprintf(secstr,"0%i",sec);
-    } else {
-        sprintf(secstr,"%i",sec);
-    }
-    fprintf(file,"CREATED:%i%i%iT%s%s%sZ\n",year,month,day,hrstr,minstr,secstr);
-    fprintf(file,"DTSTAMP:%i%i%iT%s%s%sZ\n",year,month,day,hrstr,minstr,secstr);
-    fprintf(file,"LAST-MODIFIED:%i%i%iT%s%s%sZ\n",year,month,day,hrstr,minstr,secstr);
+    title = field_buffer(field[0],0);
+    desc = field_buffer(field[1],0);
+    loc = field_buffer(field[2],0);
+    unpost_form(my_form);
+    free_form(my_form);
+    free_field(field[0]);
+    free_field(field[1]); 
+    free_field(field[2]); 
 }
 
-char *dateToDay(char *datestr, char *timestr) {
-    //takes a date string of format YYYYmmdd and a time string of format HHMMSS
-    
-    struct tm tm;
-    char *temp=(char*)malloc(sizeof(char)*5);
-    strncpy(temp,datestr,4);
-    temp[4]='\0';
-    tm.tm_year=atoi(temp)-1900;
-    strncpy(temp,datestr+4,2);
-    temp[2]='\0';
-    tm.tm_mon=atoi(temp)-1;
-    strncpy(temp,datestr+6,2);
-    temp[2]='\0';
-    tm.tm_mday=atoi(temp);
-    strncpy(temp,timestr,2);
-    temp[2]='\0';
-    tm.tm_hour=atoi(temp);
-    strncpy(temp,timestr+2,2);
-    temp[2]='\0';
-    tm.tm_min=atoi(temp);
-    strncpy(temp,timestr+4,2);
-    temp[2]='\0';
-    tm.tm_sec=atoi(temp);
-    tm.tm_isdst=-1;
-    int day=-1;
+void getDateTime(char *title, char *desc, char *loc){
+    FIELD *field[5];
+    FORM  *my_form;
+    int ch;
+    int contLoop=1;
+    char *temp = (char*)malloc(50*sizeof(char));
 
-    time_t t = mktime(&tm);
-    day = localtime(&t)->tm_wday; // Sunday=0, Monday=1, etc.
-    if (day==0) {
-    return("SU");
-    } else if (day==1) {
-    return("MO");
-    } else if (day==2) {
-    return("TU");
-    } else if (day==3) {
-    return("WE");
-    } else if (day==4) {
-    return("TH");
-    } else if (day==5) {
-    return("FR");
-    } else if (day==6) {
-    return("SA");
+    /* Initialize the fields */
+    field[0] = new_field(1, 2, 6, 5, 0, 0);
+    field[1] = new_field(1, 2, 6, 8, 0, 0);
+    field[2] = new_field(1, 4, 6, 11, 0, 0);
+    field[3] = new_field(1, 2, 6, 26, 0, 0);
+    field[4] = new_field(1, 2, 6, 29, 0, 0);
+
+    /* Set field options */
+    set_field_back(field[0], A_UNDERLINE);
+    field_opts_off(field[0], O_NULLOK+O_BLANK); 
+    set_field_type(field[0], TYPE_INTEGER,2,1,12);
+
+    set_field_back(field[1], A_UNDERLINE); 
+    field_opts_off(field[1], O_NULLOK+O_BLANK);
+    set_field_type(field[1], TYPE_INTEGER,2,1,31);
+
+    set_field_back(field[2], A_UNDERLINE); 
+    field_opts_off(field[2], O_NULLOK+O_BLANK);
+    set_field_type(field[2], TYPE_INTEGER,4,0,9999);
+
+    set_field_back(field[3], A_UNDERLINE);
+    field_opts_off(field[3], O_NULLOK+O_BLANK); 
+    set_field_type(field[3], TYPE_INTEGER,2,0,23);
+                        
+    set_field_back(field[4], A_UNDERLINE); 
+    field_opts_off(field[4], O_NULLOK+O_BLANK);
+    set_field_type(field[4], TYPE_INTEGER,2,0,59);
+
+    /* Create the form and post it */
+    my_form = new_form(field);
+    post_form(my_form);
+    mvprintw(0,0,"iCal Generator\nWritten by Derek Redfern");
+    mvprintw(3,1,"Use arrow keys to navigate; press Enter to proceed\n");
+    mvprintw(5,5,"Start date:");
+    mvprintw(5,26,"Start time:");
+    mvprintw(6,7,"/");
+    mvprintw(6,10,"/");
+    mvprintw(6,28,":");
+
+    refresh();
+    //getch();
+    form_driver(my_form, REQ_FIRST_FIELD);
+    
+    get_input(my_form,field);
+    move_field(field[0],9,5);
+    move_field(field[1],9,8);
+    move_field(field[2],9,11);
+    move_field(field[3],9,26);
+    move_field(field[4],9,29);
+    int i;
+    for(i=0;i<5;i++){
+        form_driver(my_form, REQ_CLR_FIELD);
+        form_driver(my_form, REQ_NEXT_FIELD);
     }
-    return("");
+    refresh();
+    get_input(my_form,field);
+    title = field_buffer(field[0],0);
+    desc = field_buffer(field[1],0);
+    loc = field_buffer(field[2],0);
+    unpost_form(my_form);
+    free_form(my_form);
+    free_field(field[0]);
+    free_field(field[1]); 
+    free_field(field[2]); 
 }
 
-int main(int argc,char*argv[]){
-    system("clear");
-    printIntro();
-    FILE *file = openFile();
+void get_input(FORM *my_form, FIELD **field){
+    int ch;
+    int contLoop=1;
+    char *temp = (char*)malloc(50*sizeof(char));
+    while(contLoop)
+    {   ch = getch();
+        switch(ch)
+        {   case KEY_BACKSPACE:
+                form_driver(my_form, REQ_DEL_PREV);
+                break;
+            case KEY_DC:
+                form_driver(my_form, REQ_DEL_CHAR);
+                break;
+            case KEY_LEFT:
+                if (form_driver(my_form, REQ_LEFT_CHAR)==E_REQUEST_DENIED){
+                    form_driver(my_form, REQ_PREV_FIELD);
+                }
+                break;
+            case KEY_RIGHT:
+                if (form_driver(my_form, REQ_RIGHT_CHAR)==E_REQUEST_DENIED){
+                    form_driver(my_form, REQ_NEXT_FIELD);
+                }
+                break;
+            case KEY_UP:
+                if (form_driver(my_form, REQ_PREV_LINE)==E_REQUEST_DENIED){
+                    form_driver(my_form, REQ_PREV_FIELD);
+                }
+                break;
+            case KEY_DOWN:
+                if (form_driver(my_form, REQ_NEXT_LINE)==E_REQUEST_DENIED){
+                    form_driver(my_form, REQ_NEXT_FIELD);
+                }
+                break;
+            case '\n':
+                if (form_driver(my_form,REQ_VALIDATION)==E_OK){
+                    strcpy(temp,field_buffer(field[0],0));
+                    trimTrailingWhitespace(temp);
+                    if (strlen(temp)>0) contLoop=0;
+                }
+            default:
+                form_driver(my_form, ch);
+                break;
+        }
+    }
+}
+
+
+int main()
+{   
+    initscr();
+    cbreak();
+    noecho();
+    keypad(stdscr, TRUE);
+
+    //open file and write intro data to file
+    FILE *file;
+    file = openFile();
+
+    //collect summary data from user and write to file
+    char *title = "";
+    char *desc = "";
+    char *loc = "";
+    char temp[3] = "";
+    //sprintf(temp,"a");
+    getSummary(title, desc, loc);
+
+    //collect data/time data from user and write to file
+    char *startdatetime = "";
+    char *enddatetime = "";
+    getDateTime(startdatetime,enddatetime,title);
     
-    //write intro static iCal code
-    fprintf(file,"BEGIN:VCALENDAR\nPRODID:-//Derek Redfern//iCal Generator//EN\nVERSION:2.0\n\
-CALSCALE:GREGORIAN\nMETHOD:PUBLISH\nX-MS-OLK-FORCEINSPECTOROPEN:TRUE\nBEGIN:VTIMEZONE\n\
-TZID:Eastern Standard Time\nBEGIN:STANDARD\nDTSTART:16011104T020000\n\
-RRULE:FREQ=YEARLY;BYDAY=1SU;BYMONTH=11\nTZOFFSETFROM:-0400\nTZOFFSETTO:-0500\nEND:STANDARD\n\
-BEGIN:DAYLIGHT\nDTSTART:16010311T020000\nRRULE:FREQ=YEARLY;BYDAY=2SU;BYMONTH=3\n\
-TZOFFSETFROM:-0500\nTZOFFSETTO:-0400\nEND:DAYLIGHT\nEND:VTIMEZONE\nBEGIN:VEVENT\nCLASS:PUBLIC\n\
-PRIORITY:5\nTRANSP:OPAQUE\n");
-    srand(time(NULL)); //initialize randomizer
-    fprintf(file,"UID:thisisarandomuid%i\n",rand());
-    printCurrentTime(file);
+    //!!!!!!remember: [date]T[time]!!!!!!!!!!!!!
 
-    puts("\nEvent title:");
-    char title[201];
-    fgets(title,201,stdin);
-    puts("\nEvent description:");
-    char description[801];
-    fgets(description,801,stdin);
-    puts("\nEvent location:");
-    char location[151];
-    fgets(location,151,stdin);
-    fprintf(file,"ORGANIZER;CN=Derek Redfern:mailto:redfern.derek@gmail.com\n\
-DESCRIPTION:%sSUMMARY;LANGUAGE=en-us:%sLOCATION:%s",description,title,location); //assuming all strings end in \n
+    //clean up
+    getch();
+    endwin();
 
-    char flush;
-    puts("\nStart date (yyyymmdd):");
-    char startdatestr[9];
-    fgets(startdatestr,9,stdin);
-    if (strstr(startdatestr,"\n")==NULL) {
-        while ((flush=getchar()) != '\n' && flush != EOF); //flush stdin
-    }
-    //int startdate = atoi(startdatestr);
-    puts("\nStart time (hhmmss):");
-    char starttimestr[7];
-    fgets(starttimestr,7,stdin);
-    if (strstr(starttimestr,"\n")==NULL) {
-        while ((flush=getchar()) != '\n' && flush != EOF); //flush stdin
-    }
-    //int starttime = atoi(starttimestr);
-
-    puts("\nEnd date (yyyymmdd):");
-    char enddatestr[9];
-    fgets(enddatestr,9,stdin);
-    if (strstr(enddatestr,"\n")==NULL) {
-        while ((flush=getchar()) != '\n' && flush != EOF); //flush stdin
-    }
-    //int enddate = atoi(enddatestr);
-    puts("\nEnd time (hhmmss):");
-    char endtimestr[7];
-    fgets(endtimestr,7,stdin);
-    if (strstr(endtimestr,"\n")==NULL) {
-        while ((flush=getchar()) != '\n' && flush != EOF); //flush stdin
-    }
-    //int endtime = atoi(endtimestr);
-
-    fprintf(file,"DTEND;TZID=\"Eastern Standard Time\":%sT%s\n",enddatestr,endtimestr);
-    fprintf(file,"DTSTART;TZID=\"Eastern Standard Time\":%sT%s\n",startdatestr,starttimestr);
-    
-    puts("\nDo you want this event to recur? [y/n]");
-    char confirm='a';
-    while(!((confirm=='y')||(confirm=='n'))){ //wait for valid input
-        confirm=getchar(); //get first character from stdin
-        while ((flush=getchar()) != '\n' && flush != EOF); //flush stdin
-    }
-    if(confirm=='y'){
-        puts("\nHow often do you want this event to recur?");
-        puts("Daily/weekly/monthly/yearly? [d/w/m/y]");
-        confirm='a';
-        while(!((confirm=='d')||(confirm=='w')||(confirm=='m')||(confirm=='y'))){ //wait for valid input
-            confirm=getchar(); //get first character from stdin
-            while ((flush=getchar()) != '\n' && flush != EOF); //flush stdin
-        }
-        char *freqstr;
-        if (confirm=='d'){
-            freqstr="day";
-            fprintf(file, "RRULE:FREQ=DAILY;");
-        } else if (confirm=='w') {
-            freqstr="week";
-            fprintf(file, "RRULE:FREQ=WEEKLY;");
-            puts("\nEnter days of the week to repeat on.");
-            puts("0=Su,1=M,2=Tu,3=W,4=Th,5=F,6=Sa");
-            puts("Example: 12345 to repeat on every weekday.");
-            char weekday[8];
-            fgets(weekday,8,stdin);
-            if (strstr(weekday,"\n")==NULL) {
-                while ((flush=getchar()) != '\n' && flush != EOF); //flush stdin
-            }
-            int weekdaybool[7] = {0,0,0,0,0,0,0};
-            char weekdaynames[15]="";
-            int i;
-            for (i=0;i<strlen(weekday);i++){
-                if(weekday[i]=='0'&&!weekdaybool[0]){
-                    strcat(weekdaynames,"SU,");
-                    weekdaybool[0]=1;
-                } else if(weekday[i]=='1'&&!weekdaybool[1]){
-                    strcat(weekdaynames,"MO,");
-                    weekdaybool[1]=1;
-                } else if(weekday[i]=='2'&&!weekdaybool[2]){
-                    strcat(weekdaynames,"TU,");
-                    weekdaybool[2]=1;
-                } else if(weekday[i]=='3'&&!weekdaybool[3]){
-                    strcat(weekdaynames,"WE,");
-                    weekdaybool[3]=1;
-                } else if(weekday[i]=='4'&&!weekdaybool[4]){
-                    strcat(weekdaynames,"TH,");
-                    weekdaybool[4]=1;
-                } else if(weekday[i]=='5'&&!weekdaybool[5]){
-                    strcat(weekdaynames,"FR,");
-                    weekdaybool[5]=1;
-                } else if(weekday[i]=='6'&&!weekdaybool[6]){
-                    strcat(weekdaynames,"SA,");
-                    weekdaybool[6]=1;
-                }
-            }
-            weekdaynames[strlen(weekdaynames)-1]=';';
-            weekdaynames[strlen(weekdaynames)]='\0';
-            fprintf(file,"BYDAY=%sWKST=SU;",weekdaynames);
-        } else if (confirm=='m') {
-            freqstr="month";
-            fprintf(file, "RRULE:FREQ=MONTHLY;");
-            puts("\nRecur by day (M-Su) or by date (1-31)? [day/date]");
-            char daydate[5]="";
-            while (strcmp(daydate,"day")&&strcmp(daydate,"date")) {
-                fgets(daydate,5,stdin);
-                if (strstr(daydate,"\n")==NULL) {
-                    while ((flush=getchar()) != '\n' && flush != EOF); //flush stdin
-                }
-                daydate[strlen(daydate)-1]='\0';
-            }
-            if (!strcmp(daydate,"day")){
-                int weeknum = ((startdatestr[6]-48)*10+(startdatestr[7]-48))/7+1;
-                char *weekday=dateToDay(startdatestr,starttimestr);
-                fprintf(file,"BYDAY=%i%s\n",weeknum,weekday);
-            } else {
-                fprintf(file,"BYMONTHDAY:%c%c",startdatestr[6],startdatestr[7]);
-            }
-        } else if (confirm=='y') {
-            freqstr="year";
-            fprintf(file, "RRULE:FREQ=YEARLY;BYMONTH=%c%c;",startdatestr[4],startdatestr[5]);
-            puts("\nRecur by day (M-Su) or by date (1-31)? [day/date]");
-            char daydate[5]="";
-            while (strcmp(daydate,"day")&&strcmp(daydate,"date")) {
-                fgets(daydate,5,stdin);
-                if (strstr(daydate,"\n")==NULL) {
-                    while ((flush=getchar()) != '\n' && flush != EOF); //flush stdin
-                }
-                daydate[strlen(daydate)-1]='\0';
-            }
-            if (!strcmp(daydate,"day")){
-                int weeknum = ((startdatestr[6]-48)*10+(startdatestr[7]-48))/7+1;
-                char *weekday=dateToDay(startdatestr,starttimestr);
-                fprintf(file,"BYDAY=%i%s\n",weeknum,weekday);
-            } else {
-                fprintf(file,"BYMONTHDAY:%c%c",startdatestr[6],startdatestr[7]);
-            }
-        } else {
-            puts("Something went wrong. Exiting.");
-            exit(-1);
-        }
-        printf("\nRecur at what frequency? (1 for every %s, 2 for every other %s, etc)\n",freqstr,freqstr);
-        char intervalstr[3];
-        fgets(intervalstr,3,stdin);
-        if (strstr(intervalstr,"\n")==NULL) {
-            while ((flush=getchar()) != '\n' && flush != EOF); //flush stdin
-        }
-        int interval = atoi(intervalstr);
-
-        puts("\nHow many recurrences do you want (NOT including the original)?");
-        char numrecurstr[5];
-        int numrecur;
-        fgets(numrecurstr,5,stdin);
-        numrecur=atoi(numrecurstr)+1; //TODO: check num of recurrences!
-        fprintf(file,"INTERVAL=%i;COUNT=%i\n",interval,numrecur);
-    }    
-
-    fprintf(file,"END:VEVENT\nEND:VCALENDAR\n");
-
+    //print data to file
+//     printIntro(file);
+//     printCurrentTime(file);
+//     fprintf(file,"ORGANIZER;CN=Derek Redfern:mailto:redfern.derek@gmail.com\n\
+// DESCRIPTION:%s\nSUMMARY;LANGUAGE=en-us:%s\nLOCATION:%s\n",\
+// desc,title,loc);
+//     fprintf(file,"DTSTART;TZID=\"Eastern Standard Time\":%s\n",startdatetime);
+//     fprintf(file,"DTEND;TZID=\"Eastern Standard Time\":%s\n",enddatetime);
+//     fprintf(file,"END:VEVENT\nEND:VCALENDAR\n");
     fclose(file);
-    return(0);
+    return 0;
 }
