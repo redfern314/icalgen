@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
-#include <ncurses.h>
+#include <curses.h>
 #include <string.h>
 #include "funcs.h"
 
@@ -190,12 +190,19 @@ void getSummary(char *title, char *desc, char *loc){
     free_field(field[2]); 
 }
 
-void getDateTime(char *title, char *desc, char *loc){
+void getDateTime(char *startdatetime, char *enddatetime){
     FIELD *field[5];
     FORM  *my_form;
     int ch;
     int contLoop=1;
     char *temp = (char*)malloc(50*sizeof(char));
+    char *month = (char*)malloc(3*sizeof(char));
+    char *day = (char*)malloc(3*sizeof(char));
+    char *year = (char*)malloc(5*sizeof(char));
+    char *hr = (char*)malloc(3*sizeof(char));
+    char *min = (char*)malloc(3*sizeof(char));
+    startdatetime = (char *)malloc(13*sizeof(char));
+    enddatetime = (char *)malloc(13*sizeof(char));
 
     /* Initialize the fields */
     field[0] = new_field(1, 2, 6, 5, 0, 0);
@@ -241,26 +248,60 @@ void getDateTime(char *title, char *desc, char *loc){
     form_driver(my_form, REQ_FIRST_FIELD);
     
     get_input(my_form,field);
+    strcpy(month,field_buffer(field[0],0));
+    strcpy(day,field_buffer(field[1],0));
+    strcpy(year,field_buffer(field[2],0));
+    strcpy(hr,field_buffer(field[3],0));
+    strcpy(min,field_buffer(field[4],0));
+    strcpy(startdatetime,year);
+    strcat(startdatetime,month);
+    strcat(startdatetime,day);
+    strcat(startdatetime,"T");
+    strcat(startdatetime,hr);
+    strcat(startdatetime,min);
+    int i;
+    for(i=0;i<5;i++){
+        set_field_buffer(field[i],0,"");
+    }
+    refresh();
+    unpost_form(my_form);
+    free_form(my_form);
     move_field(field[0],9,5);
     move_field(field[1],9,8);
     move_field(field[2],9,11);
     move_field(field[3],9,26);
     move_field(field[4],9,29);
-    int i;
-    for(i=0;i<5;i++){
-        form_driver(my_form, REQ_CLR_FIELD);
-        form_driver(my_form, REQ_NEXT_FIELD);
-    }
+    my_form=new_form(field);
+    post_form(my_form);
     refresh();
+    mvprintw(0,0,"iCal Generator\nWritten by Derek Redfern");
+    mvprintw(3,1,"Use arrow keys to navigate; press Enter to proceed\n");
+    mvprintw(5,5,"Start date:");
+    mvprintw(5,26,"Start time:");
+    mvprintw(6,5,"%s/%s/%s",month,day,year);
+    mvprintw(6,26,"%s:%s",hr,min);
+    mvprintw(8,5,"End date:");
+    mvprintw(8,26,"End time:");
+    mvprintw(9,7,"/");
+    mvprintw(9,10,"/");
+    mvprintw(9,28,":");
+    form_driver(my_form, REQ_FIRST_FIELD);
     get_input(my_form,field);
-    title = field_buffer(field[0],0);
-    desc = field_buffer(field[1],0);
-    loc = field_buffer(field[2],0);
+
+    strcpy(enddatetime,field_buffer(field[2],0));
+    strcat(enddatetime,field_buffer(field[0],0));
+    strcat(enddatetime,field_buffer(field[1],0));
+    strcat(enddatetime,"T");
+    strcat(enddatetime,field_buffer(field[3],0));
+    strcat(enddatetime,field_buffer(field[4],0));
+
     unpost_form(my_form);
     free_form(my_form);
     free_field(field[0]);
     free_field(field[1]); 
     free_field(field[2]); 
+    free_field(field[3]); 
+    free_field(field[4]); 
 }
 
 void get_input(FORM *my_form, FIELD **field){
@@ -298,9 +339,15 @@ void get_input(FORM *my_form, FIELD **field){
                 break;
             case '\n':
                 if (form_driver(my_form,REQ_VALIDATION)==E_OK){
-                    strcpy(temp,field_buffer(field[0],0));
-                    trimTrailingWhitespace(temp);
-                    if (strlen(temp)>0) contLoop=0;
+                    int i;
+                    int valid=1;
+                    for(i=0;i<5;i++){
+                        strcpy(temp,field_buffer(field[i],0));
+                        trimTrailingWhitespace(temp);
+                        if (strlen(temp)==0) valid=0;
+                    }
+                    
+                    if (valid==1) contLoop=0;
                 }
             default:
                 form_driver(my_form, ch);
@@ -330,9 +377,9 @@ int main()
     getSummary(title, desc, loc);
 
     //collect data/time data from user and write to file
-    char *startdatetime = "";
-    char *enddatetime = "";
-    getDateTime(startdatetime,enddatetime,title);
+    char *startdatetime;
+    char *enddatetime;
+    getDateTime(startdatetime,enddatetime);
     
     //!!!!!!remember: [date]T[time]!!!!!!!!!!!!!
 
@@ -341,14 +388,14 @@ int main()
     endwin();
 
     //print data to file
-//     printIntro(file);
-//     printCurrentTime(file);
-//     fprintf(file,"ORGANIZER;CN=Derek Redfern:mailto:redfern.derek@gmail.com\n\
-// DESCRIPTION:%s\nSUMMARY;LANGUAGE=en-us:%s\nLOCATION:%s\n",\
-// desc,title,loc);
-//     fprintf(file,"DTSTART;TZID=\"Eastern Standard Time\":%s\n",startdatetime);
-//     fprintf(file,"DTEND;TZID=\"Eastern Standard Time\":%s\n",enddatetime);
-//     fprintf(file,"END:VEVENT\nEND:VCALENDAR\n");
+    printIntro(file);
+    printCurrentTime(file);
+    fprintf(file,"ORGANIZER;CN=Derek Redfern:mailto:redfern.derek@gmail.com\n\
+DESCRIPTION:%s\nSUMMARY;LANGUAGE=en-us:%s\nLOCATION:%s\n",\
+desc,title,loc);
+    fprintf(file,"DTSTART;TZID=\"Eastern Standard Time\":%s\n",startdatetime);
+    fprintf(file,"DTEND;TZID=\"Eastern Standard Time\":%s\n",enddatetime);
+    fprintf(file,"END:VEVENT\nEND:VCALENDAR\n");
     fclose(file);
     return 0;
 }
