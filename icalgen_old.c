@@ -311,7 +311,7 @@ DESCRIPTION:%sSUMMARY;LANGUAGE=en-us:%sLOCATION:%s",description,title,location);
     }    
 
     fprintf(file,"END:VEVENT\nEND:VCALENDAR\n");
-
+ 
     fclose(file);
     return(0);
 }
